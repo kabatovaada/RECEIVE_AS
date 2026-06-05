@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+import os, shutil
 
 st.set_page_config(page_title="RECEIVE AS Report", page_icon="📥", layout="wide")
 
@@ -22,24 +23,25 @@ st.markdown("""
     .card-metric .value {font-size: 1.8rem; font-weight: 700; color: #C9D1D9;}
     .card-metric .label {font-size: 0.75rem; color: #8B949E;}
     .card-metric .sub {font-size: 0.7rem; color: #484F58;}
-    .rank-badge {display: inline-block; padding: 2px 10px; border-radius: 4px; font-weight: 700; font-size: 0.75rem; color: white;}
 </style>
 """, unsafe_allow_html=True)
 
 GEOSIZE_COLORS = {"SPO": "#2EA043", "BPO": "#6366F1"}
 ABC_COLORS = {"A": "#2EA043", "B": "#D29922", "C": "#FF4B4B"}
 PLOTLY_TEMPLATE = "plotly_dark"
-CARD_BG = "#161B22"
-CARD_BORDER = "#30363D"
+
+# ─── Trvalé úložisko súboru ───────────────────────────
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+DATA_FILE = os.path.join(DATA_DIR, "RECEIVE_AS_REPORT.xlsx")
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # ─── Load data ───────────────────────────────────────
 @st.cache_data
-def load_data(file):
-    df = pd.read_excel(file, engine="openpyxl")
+def load_data(path):
+    df = pd.read_excel(path, engine="openpyxl")
     df["Čas vzniku"] = pd.to_datetime(df["Čas vzniku"], errors="coerce")
     df["den"] = df["Čas vzniku"].dt.date
     df["hodina"] = df["Čas vzniku"].dt.hour
-    df["den_tyzdna"] = df["Čas vzniku"].dt.day_name()
     df["den_tyzdna_sk"] = df["Čas vzniku"].dt.dayofweek.map({
         0: "Pondelok", 1: "Utorok", 2: "Streda", 3: "Štvrtok",
         4: "Piatok", 5: "Sobota", 6: "Nedeľa"
@@ -51,20 +53,35 @@ def load_data(file):
 with st.sidebar:
     st.markdown("## 📥 RECEIVE AS")
     st.markdown("---")
-    uploaded = st.file_uploader("Nahrať RECEIVE_AS_REPORT.xlsx", type=["xlsx"])
+
+    # Zobrazíme stav nahratého súboru
+    if os.path.exists(DATA_FILE):
+        mtime = os.path.getmtime(DATA_FILE)
+        mtime_str = pd.Timestamp(mtime, unit="s").strftime("%d.%m.%Y %H:%M")
+        st.success(f"✅ Súbor nahraný\n\n`{mtime_str}`")
+    else:
+        st.warning("⚠️ Žiadny súbor na serveri")
+
+    uploaded = st.file_uploader("Nahrať / aktualizovať XLSX", type=["xlsx"])
+
+    if uploaded is not None:
+        with open(DATA_FILE, "wb") as f:
+            f.write(uploaded.read())
+        st.cache_data.clear()
+        st.success("✅ Súbor uložený na server!")
+        st.rerun()
+
     st.markdown("---")
     st.markdown("**Filtre**")
 
-if uploaded:
-    df_raw = load_data(uploaded)
-else:
-    try:
-        df_raw = load_data("RECEIVE_AS_REPORT.xlsx")
-    except:
-        st.info("⬅️ Nahraj súbor RECEIVE_AS_REPORT.xlsx cez sidebar.")
-        st.stop()
+# ─── Načítanie dát ────────────────────────────────────
+if not os.path.exists(DATA_FILE):
+    st.info("👈 Nahrajte súbor **RECEIVE_AS_REPORT.xlsx** v ľavom paneli. Súbor zostane uložený na serveri.")
+    st.stop()
 
-# ─── Sidebar filters ──────────────────────────────────
+df_raw = load_data(DATA_FILE)
+
+# ─── Filtre ───────────────────────────────────────────
 with st.sidebar:
     geosize_opts = sorted(df_raw["GeoSize"].dropna().unique())
     sel_geosize = st.multiselect("GeoSize", geosize_opts, default=geosize_opts)
@@ -159,7 +176,7 @@ with col3:
 st.markdown("---")
 
 # ═══════════════════════════════════════════════════════
-# SEKCIA 3 – ČASOVÝ TREND (DNI)
+# SEKCIA 3 – ČASOVÝ TREND
 # ═══════════════════════════════════════════════════════
 st.markdown('<p class="section-title">PRÍJEM V ČASE — DENNÝ TREND</p>', unsafe_allow_html=True)
 
@@ -170,18 +187,14 @@ daily = df.groupby("den").agg(
 daily["den"] = daily["den"].astype(str)
 
 col_d1, col_d2 = st.columns(2)
-
 with col_d1:
     fig_d1 = px.bar(daily, x="den", y="Záznamy", template=PLOTLY_TEMPLATE,
-                    title="Záznamy príjmu podľa dňa",
-                    color_discrete_sequence=["#2EA043"])
+                    title="Záznamy príjmu podľa dňa", color_discrete_sequence=["#2EA043"])
     fig_d1.update_layout(height=300, margin=dict(t=40, b=10, l=10, r=10))
     st.plotly_chart(fig_d1, use_container_width=True)
-
 with col_d2:
     fig_d2 = px.bar(daily, x="den", y="Kusy", template=PLOTLY_TEMPLATE,
-                    title="Kusy príjmu podľa dňa",
-                    color_discrete_sequence=["#6366F1"])
+                    title="Kusy príjmu podľa dňa", color_discrete_sequence=["#6366F1"])
     fig_d2.update_layout(height=300, margin=dict(t=40, b=10, l=10, r=10))
     st.plotly_chart(fig_d2, use_container_width=True)
 
@@ -198,32 +211,25 @@ hourly = df.groupby("hodina").agg(
 ).reset_index().sort_values("hodina")
 
 col_h1, col_h2 = st.columns(2)
-
 with col_h1:
     fig_h1 = px.bar(hourly, x="hodina", y="Záznamy", template=PLOTLY_TEMPLATE,
-                    title="Záznamy príjmu podľa hodiny",
-                    color_discrete_sequence=["#D29922"])
+                    title="Záznamy príjmu podľa hodiny", color_discrete_sequence=["#D29922"])
     fig_h1.update_layout(height=300, margin=dict(t=40, b=10, l=10, r=10))
     fig_h1.update_xaxes(dtick=1)
     st.plotly_chart(fig_h1, use_container_width=True)
-
 with col_h2:
     fig_h2 = px.bar(hourly, x="hodina", y="Kusy", template=PLOTLY_TEMPLATE,
-                    title="Kusy príjmu podľa hodiny",
-                    color_discrete_sequence=["#FF4B4B"])
+                    title="Kusy príjmu podľa hodiny", color_discrete_sequence=["#FF4B4B"])
     fig_h2.update_layout(height=300, margin=dict(t=40, b=10, l=10, r=10))
     fig_h2.update_xaxes(dtick=1)
     st.plotly_chart(fig_h2, use_container_width=True)
 
-# Peakový deň týždňa
 st.markdown('<p class="section-title">PEAKOVÝ DEŇ TÝŽDŇA</p>', unsafe_allow_html=True)
-
 day_order = ["Pondelok", "Utorok", "Streda", "Štvrtok", "Piatok", "Sobota", "Nedeľa"]
 weekday = df.groupby(["den_num", "den_tyzdna_sk"]).agg(
     Záznamy=("Produkt", "count"),
     Kusy=("Ks na lokačním pohybu", "sum")
 ).reset_index().sort_values("den_num")
-
 fig_wd = px.bar(weekday, x="den_tyzdna_sk", y="Záznamy",
                 template=PLOTLY_TEMPLATE, title="Záznamy podľa dňa v týždni",
                 color_discrete_sequence=["#3FB950"],
@@ -245,14 +251,12 @@ ops_df = df.groupby("Naskladnil").agg(
 ).reset_index().sort_values("Záznamy", ascending=False).head(15)
 
 col_o1, col_o2 = st.columns([2, 1])
-
 with col_o1:
     fig_ops = px.bar(ops_df, x="Záznamy", y="Naskladnil", orientation="h",
                      template=PLOTLY_TEMPLATE, title="Top operátori podľa počtu záznamov",
                      color="Záznamy", color_continuous_scale="Greens")
     fig_ops.update_layout(height=400, margin=dict(t=40, b=10, l=10, r=10), yaxis=dict(autorange="reversed"))
     st.plotly_chart(fig_ops, use_container_width=True)
-
 with col_o2:
     fig_ops2 = px.bar(ops_df.head(10), x="Kusy", y="Naskladnil", orientation="h",
                       template=PLOTLY_TEMPLATE, title="Top 10 operátori — kusy",
@@ -260,7 +264,6 @@ with col_o2:
     fig_ops2.update_layout(height=400, margin=dict(t=40, b=10, l=10, r=10), yaxis=dict(autorange="reversed"))
     st.plotly_chart(fig_ops2, use_container_width=True)
 
-# Tabuľka operátorov
 with st.expander("📋 Detail všetkých operátorov"):
     ops_full = df.groupby("Naskladnil").agg(
         Záznamy=("Produkt", "count"),
@@ -283,14 +286,12 @@ prod_df = df.groupby(["Produkt", "Popis", "ABC rank", "GeoSize"]).agg(
 ).reset_index().sort_values("Kusy", ascending=False).head(20)
 
 col_p1, col_p2 = st.columns([2, 1])
-
 with col_p1:
     fig_prod = px.bar(prod_df.head(15), x="Kusy", y="Produkt", orientation="h",
                       template=PLOTLY_TEMPLATE, title="Top 15 produktov podľa kusov",
                       color="ABC rank", color_discrete_map=ABC_COLORS)
     fig_prod.update_layout(height=450, margin=dict(t=40, b=10, l=10, r=10), yaxis=dict(autorange="reversed"))
     st.plotly_chart(fig_prod, use_container_width=True)
-
 with col_p2:
     st.markdown("**Top 10 podľa kusov**")
     for _, row in prod_df.head(10).iterrows():
