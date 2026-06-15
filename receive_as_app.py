@@ -175,10 +175,15 @@ if sel_ops:
 # ═══════════════════════════════════════════════════════
 # SEKCIA 1 – HLAVNÝ PREHĽAD
 # ═══════════════════════════════════════════════════════
+datum_od  = pd.Timestamp(df_raw["den"].min()).strftime("%d.%m.%Y")
+datum_do  = pd.Timestamp(df_raw["den"].max()).strftime("%d.%m.%Y")
+pocet_dni = (df_raw["den"].max() - df_raw["den"].min()).days + 1
+
 st.markdown("## 📥 RECEIVE AS — Nepotvrdené príjmy do AutoStore")
 st.markdown(f"""
 <div class="info-bar">
-Store: 162 SKLC3 · Nepotvrdené záznamy · {df['den'].min()} → {df['den'].max()} · GitHub: {GH_REPO}/{GH_PATH}
+📅 Obdobie reportu: <strong style="color:#C9D1D9;">{datum_od} — {datum_do}</strong> &nbsp;·&nbsp; {pocet_dni} dní
+&nbsp;&nbsp;|&nbsp;&nbsp; Store: 162 SKLC3 &nbsp;·&nbsp; Nepotvrdené záznamy &nbsp;·&nbsp; GitHub: {GH_REPO}/{GH_PATH}
 </div>
 """, unsafe_allow_html=True)
 
