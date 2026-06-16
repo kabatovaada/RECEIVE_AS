@@ -79,7 +79,8 @@ def load_data():
         return None, None
     df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
     df["Čas vzniku"] = pd.to_datetime(df["Čas vzniku"], errors="coerce")
-    df["den"]        = df["Čas vzniku"].dt.date
+    df = df.dropna(subset=["Čas vzniku"]).copy()
+    df["den"]        = pd.to_datetime(df["Čas vzniku"].dt.date)
     df["hodina"]     = df["Čas vzniku"].dt.hour
     df["den_num"]    = df["Čas vzniku"].dt.dayofweek
     df["den_sk"]     = df["den_num"].map({
@@ -159,8 +160,12 @@ if sel_ops: df = df[df["Naskladnil"].isin(sel_ops)]
 # ═══════════════════════════════════════════════════════
 # HLAVIČKA
 # ═══════════════════════════════════════════════════════
-datum_od  = pd.Timestamp(df_raw["den"].min()).strftime("%d.%m.%Y")
-datum_do  = pd.Timestamp(df_raw["den"].max()).strftime("%d.%m.%Y")
+if df_raw.empty:
+    st.warning("⚠️ V súbore nie sú žiadne riadky s platným dátumom v stĺpci 'Čas vzniku'.")
+    st.stop()
+
+datum_od  = df_raw["den"].min().strftime("%d.%m.%Y")
+datum_do  = df_raw["den"].max().strftime("%d.%m.%Y")
 pocet_dni = (df_raw["den"].max() - df_raw["den"].min()).days + 1
 
 st.markdown("## 📥 RECEIVE AS — Nepotvrdené príjmy do AutoStore")
